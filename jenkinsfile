@@ -21,10 +21,13 @@ pipeline {
 
     stages {
 
-        stage('Checkout') {
+          stage('Checkout Application') {
             steps {
+
+                deleteDir()
+
                 git branch: 'main',
-                    url: 'https://github.com/adityavaste/gitops_dev_kf.git'
+                    url: "${APP_REPO}"
             }
         }
         
