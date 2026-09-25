@@ -24,7 +24,19 @@ pipeline {
                     url: 'https://github.com/adityavaste/gitops_dev_kf.git'
             }
         }
-
+        
+        stage('Verify Files') {
+    steps {
+        sh '''
+            pwd
+            ls -la
+            ls -lh package.json || true
+            ls -lh package-lock.json || true
+            git remote -v
+            git branch --show-current
+        '''
+    }
+}
         stage('Install Dependencies') {
             steps {
                 sh '''
