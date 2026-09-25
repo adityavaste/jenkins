@@ -1,0 +1,165 @@
+pipeline {
+
+    agent any
+
+    environment {
+        AWS_REGION = 'ap-south-1'
+
+        AWS_ACCOUNT_ID = '900840136675'
+        ECR_REPO       = 'k_ecr_repo'
+        IMAGE_TAG      = "${BUILD_NUMBER}"
+
+        ECR_REGISTRY   = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+        IMAGE_NAME     = "${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG}"
+
+        GITOPS_REPO    = 'https://github.com/adityavaste/gitops_dev_kf.git'
+        GITOPS_BRANCH  = 'main'
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                git branch: 'main',
+                    url: 'https://github.com/adityavaste/gitops_dev_kf.git'
+            }
+        }
+
+        stage('Install Dependencies') {
+            steps {
+                sh '''
+                    npm ci
+                '''
+            }
+        }
+
+        stage('Lint') {
+            steps {
+                sh '''
+                    npm run lint
+                '''
+            }
+        }
+
+        stage('Unit Test') {
+            steps {
+                sh '''
+                    npm test
+                '''
+            }
+        }
+
+        stage('Build Application') {
+            steps {
+                sh '''
+                    npm run build
+                '''
+            }
+        }
+
+        stage('SonarQube Scan') {
+            steps {
+                echo 'Run SonarQube analysis here'
+                // Example:
+                // withSonarQubeEnv('sonarqube') {
+                //     sh 'sonar-scanner'
+                // }
+            }
+        }
+
+        stage('Docker Build') {
+            steps {
+                sh '''
+                    docker build -t ${IMAGE_NAME} .
+                '''
+            }
+        }
+
+        stage('Trivy Image Scan') {
+            steps {
+                sh '''
+                    trivy image \
+                      --severity HIGH,CRITICAL \
+                      --exit-code 1 \
+                      ${IMAGE_NAME}
+                '''
+            }
+        }
+
+        stage('Login to ECR') {
+            steps {
+                sh '''
+                    aws ecr get-login-password \
+                      --region ${AWS_REGION} | \
+                    docker login \
+                      --username AWS \
+                      --password-stdin ${ECR_REGISTRY}
+                '''
+            }
+        }
+
+        stage('Push Image to ECR') {
+            steps {
+                sh '''
+                    docker push ${IMAGE_NAME}
+                '''
+            }
+        }
+
+        stage('Update GitOps Repository') {
+            steps {
+
+                dir('gitops') {
+
+                    git branch: "${GITOPS_BRANCH}",
+                        url: "${GITOPS_REPO}",
+                        credentialsId: 'github-credentials'
+
+                    sh '''
+                        echo "Updating image tag to ${IMAGE_TAG}"
+
+                        sed -i "s/tag:.*/tag: \\"${IMAGE_TAG}\\"/" \
+                          kubernetes/deployment.yaml
+
+                        git config user.email "jenkins@company.com"
+                        git config user.name "Jenkins"
+
+                        git add kubernetes/deployment.yaml
+
+                        git commit -m "Update cloudtech image to ${IMAGE_TAG}" || true
+
+                        git push origin ${GITOPS_BRANCH}
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+
+        success {
+            echo """
+            CI/CD Pipeline Successful!
+
+            Application Image:
+            ${IMAGE_NAME}
+
+            GitOps repository updated.
+
+            Argo CD will detect the Git change
+            and synchronize the application to EKS.
+            """
+        }
+
+        failure {
+            echo 'Pipeline failed. Check the failed stage and logs.'
+        }
+
+        always {
+            sh '''
+                docker logout ${ECR_REGISTRY} || true
+            '''
+        }
+    }
+}
+
