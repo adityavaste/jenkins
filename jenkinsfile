@@ -11,6 +11,9 @@ pipeline {
 
         ECR_REGISTRY   = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
         IMAGE_NAME     = "${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG}"
+        
+          APP_REPO       = 'https://github.com/adityavaste/jenkins.git'
+
 
         GITOPS_REPO    = 'https://github.com/adityavaste/gitops_dev_kf.git'
         GITOPS_BRANCH  = 'main'
